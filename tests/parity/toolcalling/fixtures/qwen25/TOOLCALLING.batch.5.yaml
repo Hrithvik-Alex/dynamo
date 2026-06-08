@@ -18,10 +18,8 @@ cases:
             type: string
     expected:
       dynamo:
-        calls:
-        - name: get_weather
-          arguments:
-            location: NYC
+        reason: qwen2.5 inherits hermes's consistent suppression of an unfinished single call (no closing </tool_call>) - the call is dropped AND the dangling buffer is hidden (empty normal_text). qwen2.5 has no vLLM peer; SGLang treats this family's wrapper as ordinary content and leaves it raw, so Dynamo deliberately diverges (non-parity).
+        calls: []
         normal_text: ''
       vllm:
         unavailable: vLLM has no parser for family='qwen25'
@@ -49,13 +47,15 @@ cases:
     tools:
     - *id001
     expected:
-      dynamo: &id003
-        reason: "Dynamo's qwen25 (hermes alias) parser leaves closing </tool_call> tag plus the JSON body in normal_text when opening <tool_call> marker is missing (impl-defined recovery)"
+      dynamo:
+        reason: qwen2.5 inherits hermes's consistent suppression of a tool call truncated mid-argument - the call is dropped AND the dangling buffer is hidden (empty normal_text). qwen2.5 has no vLLM peer; SGLang treats this family's wrapper as ordinary content and leaves it raw, so Dynamo deliberately diverges (non-parity).
         calls: []
-        normal_text: '<tool_call>{"name": "get_weather", "arguments": {"loc'
+        normal_text: ''
       vllm:
         unavailable: vLLM has no parser for family='qwen25'
-      sglang: *id003
+      sglang:
+        calls: []
+        normal_text: '<tool_call>{"name": "get_weather", "arguments": {"loc'
   TOOLCALLING.batch.5.d:
     description: Multi-call, last call missing only end marker (body complete)
     ref: dynamo

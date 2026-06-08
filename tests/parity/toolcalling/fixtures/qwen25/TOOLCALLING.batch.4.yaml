@@ -64,10 +64,8 @@ cases:
     - *id002
     expected:
       dynamo:
-        calls:
-        - name: get_weather
-          arguments:
-            location: NYC
+        reason: qwen2.5 inherits hermes's consistent suppression of an unfinished single call (no closing </tool_call>) - the call is dropped AND the dangling buffer is hidden (empty normal_text). qwen2.5 has no vLLM peer; SGLang treats this family's wrapper as ordinary content and leaves it raw, so Dynamo deliberately diverges (non-parity).
+        calls: []
         normal_text: ''
       vllm:
         unavailable: vLLM has no parser for family='qwen25'
