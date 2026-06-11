@@ -14,10 +14,12 @@
 
 pub mod envoy_helpers;
 pub mod epp;
+pub mod external;
 pub mod picker;
 pub mod proto;
 pub mod server;
 
 pub use epp::Router;
+pub use external::ExternalConfig;
 pub use picker::{Endpoint, EndpointPicker, PickResult, RequestInfo};
 pub use server::ExtProcServer;
