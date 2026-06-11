@@ -2032,4 +2032,71 @@ mod tests {
             all_text
         );
     }
+
+    /// Regression test: when the harmony tool-call parser is invoked
+    /// incrementally per `<|call|>`-bounded section, each invocation
+    /// restarts the parser's local call_idx from 1, so without the
+    /// jail-side renumbering every emitted tool call would carry the
+    /// same id ("call-1"). The OpenAI Chat Completions contract
+    /// requires unique ids; clients (and Dynamo's own E2E harness)
+    /// reject duplicates with `duplicate_tool_ids`.
+    #[tokio::test]
+    async fn test_harmony_multi_tool_call_unique_ids() {
+        let jail = JailedStream::builder().tool_call_parser("harmony").build();
+
+        // Two parallel get_weather calls in separate stream chunks — each
+        // chunk has its own <|call|> boundary, so should_end_jail() fires
+        // twice and the harmony parser is invoked once per call.
+        let chunks = vec![
+            text_chunk(
+                "<|start|>assistant<|channel|>commentary to=functions.get_weather \
+                 <|constrain|>json<|message|>{\"location\":\"SF\"}<|call|>",
+            ),
+            text_chunk(
+                "<|start|>assistant<|channel|>commentary to=functions.get_weather \
+                 <|constrain|>json<|message|>{\"location\":\"NY\"}<|call|>",
+            ),
+        ];
+
+        let input_stream = Box::pin(stream::iter(chunks));
+        let output_stream = jail.apply_with_finish_reason(input_stream);
+        let responses: Vec<_> = output_stream.collect().await;
+
+        // Walk every emitted tool-call chunk and collect (id, name) pairs.
+        // collect_tool_calls() drops the id, so we inline the walk here.
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for resp in &responses {
+            if let Some(ref data) = resp.data {
+                for choice in &data.inner.choices {
+                    if let Some(ref tcs) = choice.delta.tool_calls {
+                        for tc in tcs {
+                            let id = tc.id.clone().unwrap_or_default();
+                            let name = tc
+                                .function
+                                .as_ref()
+                                .and_then(|f| f.name.clone())
+                                .unwrap_or_default();
+                            entries.push((id, name));
+                        }
+                    }
+                }
+            }
+        }
+
+        assert!(
+            entries.len() >= 2,
+            "Expected at least 2 tool calls, got {}: {:?}",
+            entries.len(),
+            entries,
+        );
+
+        let ids: Vec<&str> = entries.iter().map(|(id, _)| id.as_str()).collect();
+        let unique: std::collections::HashSet<&str> = ids.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            ids.len(),
+            "Tool call ids must be unique across multi-call emissions. Got: {:?}",
+            entries,
+        );
+    }
 }
