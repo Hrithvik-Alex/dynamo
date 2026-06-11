@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use dynamo_ext_proc::{ExtProcServer, Router};
+use dynamo_ext_proc::{ExtProcServer, ExternalConfig, Router};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 
@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
+    let external = ExternalConfig::is_enabled();
     let config = Config::from_env();
 
     tracing::info!(
@@ -127,6 +128,7 @@ async fn main() -> Result<()> {
         namespace = %config.namespace,
         component = %config.component,
         enforce_disagg = config.enforce_disagg,
+        external_mode = external,
         "Starting Dynamo Rust EPP"
     );
 
@@ -144,9 +146,22 @@ async fn main() -> Result<()> {
             .serve(health_addr),
     );
 
-    tracing::info!("Initializing KV-aware router from discovery...");
-    let router =
-        Router::from_discovery(&config.namespace, &config.component, config.enforce_disagg).await?;
+    // Mode selection: external ("on-ramp", raw vLLM, no Dynamo runtime) vs the
+    // default Dynamo mode (DistributedRuntime over etcd/NATS + Dynamo workers).
+    let router = if external {
+        let ext_cfg = ExternalConfig::from_env()?;
+        tracing::info!(
+            model = %ext_cfg.model_name,
+            block_size = ext_cfg.block_size,
+            pod_selector = %ext_cfg.pod_selector,
+            disaggregated = ext_cfg.is_disaggregated(),
+            "Initializing KV-aware router in external (raw-vLLM) mode..."
+        );
+        Router::from_external(ext_cfg).await?
+    } else {
+        tracing::info!("Initializing KV-aware router from discovery...");
+        Router::from_discovery(&config.namespace, &config.component, config.enforce_disagg).await?
+    };
 
     // Gate SERVING on pod-reflector readiness. `from_discovery` returns once
     // worker discovery and the model card are ready, but the K8s pod reflector's
