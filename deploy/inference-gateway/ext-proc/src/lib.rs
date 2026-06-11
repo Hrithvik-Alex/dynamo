@@ -15,6 +15,7 @@
 pub mod envoy_helpers;
 pub mod epp;
 pub mod external;
+pub mod external_reflector;
 pub mod kv_republisher;
 pub mod picker;
 pub mod proto;
@@ -22,6 +23,7 @@ pub mod server;
 
 pub use epp::Router;
 pub use external::ExternalConfig;
+pub use external_reflector::ExternalPodReflector;
 pub use kv_republisher::KvRepublisher;
 pub use picker::{Endpoint, EndpointPicker, PickResult, RequestInfo};
 pub use server::ExtProcServer;
